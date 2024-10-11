@@ -161,4 +161,5 @@ cython_debug/
 
 # dataset
 ratings_cleaned.csv
+ratings_10.csv
 model/
