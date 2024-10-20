@@ -1,0 +1,6 @@
+fastapi
+pandas
+joblib
+scikit-surprise
+uvicorn
+pydantic
