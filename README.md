@@ -2,7 +2,7 @@
 
 This is a simple API that recommends movies based on the user's previous ratings. It uses the MovieLens dataset and a collaborative filtering algorithm to make recommendations. The API is used in the [Kotflix](https://github.com/PepeuFBV/KotFlix) project to recommend movies to users.
 
-The chosen model for the project was obtained in the [Movie Recommendation](https://github.com/PepeuFBV/Movie-Recommendation) repository. Just get the model and best params to insert in the API.
+The chosen model and data for the project were obtained in the [Movie Recommendation](https://github.com/PepeuFBV/Movie-Recommendation) repository. Just get the model, data and the model's best params to insert in the API.
 
 ## Installation
 
