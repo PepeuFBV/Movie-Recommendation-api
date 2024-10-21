@@ -1,10 +1,13 @@
 import os
+from http.client import HTTPException
+
 from fastapi import FastAPI
 from surprise import SlopeOne, Reader, Dataset
 import pandas as pd
 import joblib
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from threading import Lock
 
 app = FastAPI()
 
@@ -17,11 +20,22 @@ app.add_middleware(
 )
 
 model_path = 'model/slope_one_model.pkl'
+model_lock = Lock()
+model_training = False
 
 @app.get("/init")
 async def init():
-    print("Initializing model")
-    joblib.dump(train_model(), model_path)
+    global model_training
+    with model_lock:
+        if model_training:
+            raise HTTPException(status_code=409, detail="Model is already being trained")
+        model_training = True
+    try:
+        print("Initializing model")
+        joblib.dump(train_model(), model_path)
+    finally:
+        with model_lock:
+            model_training = False
     return {"message": "Model initialized and trained"}
 
 
@@ -48,8 +62,14 @@ async def rate_movie(request: RateMovieRequest):
         request.rating]})
     ratings = pd.concat([ratings, new_rating], ignore_index=True)
     ratings.to_csv('ratings_10.csv', index=False)
-    joblib.dump(train_model(), model_path)
-    print("Rating added and model retrained")
+    global model_training
+    with model_lock:
+        if not model_training:
+            try:
+                joblib.dump(train_model(), model_path)
+                print("Rating added and model retrained")
+            finally:
+                model_training = False
     return {"message": "Rating added and model retrained"}
 
 
@@ -76,7 +96,16 @@ async def predict_movies(request: PredictMoviesRequest):
 
 @app.get("/retrain")
 async def retrain():
-    joblib.dump(train_model(), model_path)
+    global model_training
+    with model_lock:
+        if model_training:
+            raise HTTPException(status_code=409, detail="Model is already being trained")
+        model_training = True
+    try:
+        joblib.dump(train_model(), model_path)
+    finally:
+        with model_lock:
+            model_training = False
     return {"message": "Model retrained"}
 
 
