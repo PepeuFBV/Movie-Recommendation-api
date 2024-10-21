@@ -52,6 +52,9 @@ async def rate_movie(request: RateMovieRequest):
     print("Rating added and model retrained")
     return {"message": "Rating added and model retrained"}
 
+
+
+
 class PredictMoviesRequest(BaseModel):
     user_id: str
     number_of_movies: int
@@ -98,7 +101,6 @@ def get_user_id(user_id):
         users_df = pd.DataFrame(columns=['user_id', 'model_id'])
         users_df.to_csv(user_path, index=False)
 
-    os.makedirs(os.path.dirname(model_path), exist_ok=True)
     users = pd.read_csv(user_path)
     user = users[users['user_id'] == user_id]
     if len(user) == 0:

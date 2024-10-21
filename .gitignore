@@ -163,3 +163,6 @@ cython_debug/
 ratings_cleaned.csv
 ratings_10.csv
 model/
+
+# users file
+users.csv
