@@ -1,15 +1,36 @@
 import os
 from http.client import HTTPException
-
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from surprise import SlopeOne, Reader, Dataset
 import pandas as pd
 import joblib
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from threading import Lock
+import asyncio
+from queue import Queue
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+model_path = 'model/slope_one_model.pkl'
+model_lock = Lock()
+model_training = False
+
+rating_queue = Queue()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    asyncio.create_task(process_rating_queue())
+    yield
+
+
+async def process_rating_queue():
+    while True:
+        if not rating_queue.empty():
+            request = rating_queue.get()
+            await handle_rating_request(request)
+        await asyncio.sleep(1)
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,9 +40,7 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-model_path = 'model/slope_one_model.pkl'
-model_lock = Lock()
-model_training = False
+
 
 @app.get("/init")
 async def init():
@@ -56,22 +75,32 @@ class RateMovieRequest(BaseModel):
 @app.post("/rate_movie")
 async def rate_movie(request: RateMovieRequest):
     print("Received rating request: ", request)
+    rating_queue.put(request)
+    return {"message": "Rating request added to queue"}
+
+
+
+class RateMovieRequest(BaseModel):
+    user_id: str
+    movie_id: int
+    rating: float
+
+async def handle_rating_request(request: RateMovieRequest):
+    print("Processing rating request: ", request)
     user_id = get_user_id(request.user_id)
     ratings = pd.read_csv('ratings_10.csv')
-    new_rating = pd.DataFrame({'userId': [user_id], 'movieId': [request.movie_id], 'rating': [
-        request.rating]})
+    new_rating = pd.DataFrame({'userId': [user_id], 'movieId': [request.movie_id], 'rating': [request.rating]})
     ratings = pd.concat([ratings, new_rating], ignore_index=True)
     ratings.to_csv('ratings_10.csv', index=False)
     global model_training
     with model_lock:
         if not model_training:
+            model_training = True
             try:
                 joblib.dump(train_model(), model_path)
                 print("Rating added and model retrained")
             finally:
                 model_training = False
-    return {"message": "Rating added and model retrained"}
-
 
 
 
