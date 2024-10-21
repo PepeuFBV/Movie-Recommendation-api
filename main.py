@@ -85,13 +85,25 @@ class RateMovieRequest(BaseModel):
     movie_id: int
     rating: float
 
+
 async def handle_rating_request(request: RateMovieRequest):
     print("Processing rating request: ", request)
     user_id = get_user_id(request.user_id)
-    ratings = pd.read_csv('ratings_10.csv')
-    new_rating = pd.DataFrame({'userId': [user_id], 'movieId': [request.movie_id], 'rating': [request.rating]})
-    ratings = pd.concat([ratings, new_rating], ignore_index=True)
-    ratings.to_csv('ratings_10.csv', index=False)
+    ratings = pd.read_csv('ratings.csv')
+
+    # Check if the rating already exists
+    existing_rating = ratings[(ratings['userId'] == user_id) & (ratings['movieId'] == request.movie_id)]
+    if not existing_rating.empty:
+        # Update the existing rating
+        ratings.loc[
+            (ratings['userId'] == user_id) & (ratings['movieId'] == request.movie_id), 'rating'] = request.rating
+    else:
+        # Add a new rating
+        new_rating = pd.DataFrame({'userId': [user_id], 'movieId': [request.movie_id], 'rating': [request.rating]})
+        ratings = pd.concat([ratings, new_rating], ignore_index=True)
+
+    ratings.to_csv('ratings.csv', index=False)
+
     global model_training
     with model_lock:
         if not model_training:
@@ -114,11 +126,16 @@ async def predict_movies(request: PredictMoviesRequest):
     user_id = get_user_id(request.user_id)
     model = joblib.load(model_path)
     # get all unique movie ids from the ratings file
-    movies_ids = pd.read_csv('ratings_10.csv')['movieId'].unique()
+    movies_ids = pd.read_csv('ratings.csv')['movieId'].unique()
     predictions = [model.predict(user_id, movie_id) for movie_id in movies_ids]
     predictions.sort(key=lambda x: x.est, reverse=True)
     top_movies = predictions[:request.number_of_movies]
-    top_movie_ids = [int(prediction.iid) for prediction in top_movies]  # Convert numpy.int64 to int
+    top_movie_ids = []
+    for prediction in top_movies:
+        movie_id = int(prediction.iid)  # Convert numpy.int64 to int
+        estimated_rating = prediction.est
+        print(f"Movie ID: {movie_id}, Estimated Rating: {estimated_rating}")
+        top_movie_ids.append(movie_id)
     return top_movie_ids
 
 
@@ -141,7 +158,7 @@ async def retrain():
 
 def train_model():
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
-    ratings = pd.read_csv('ratings_10.csv')
+    ratings = pd.read_csv('ratings.csv')
     reader = Reader()
     data = Dataset.load_from_df(ratings[['userId', 'movieId', 'rating']], reader)
     model = SlopeOne()
@@ -162,7 +179,7 @@ def get_user_id(user_id):
     users = pd.read_csv(user_path)
     user = users[users['user_id'] == user_id]
     if len(user) == 0:
-        ratings = pd.read_csv('ratings_cleaned.csv')
+        ratings = pd.read_csv('ratings.csv')
         max_user_id = ratings['userId'].max()
         new_model_id = max_user_id + 1
         new_user = pd.DataFrame({'user_id': [user_id], 'model_id': [new_model_id]})
