@@ -1,7 +1,7 @@
 import os
 from http.client import HTTPException
 from fastapi import FastAPI, HTTPException
-from surprise import SlopeOne, Reader, Dataset
+from surprise import SVD, Reader, Dataset
 import pandas as pd
 import joblib
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +10,7 @@ from threading import Lock
 import asyncio
 from queue import Queue
 from contextlib import asynccontextmanager
+import time
 
 model_path = 'model/slope_one_model.pkl'
 model_lock = Lock()
@@ -51,7 +52,7 @@ async def init():
         model_training = True
     try:
         print("Initializing model")
-        joblib.dump(train_model(), model_path)
+        train_model()
     finally:
         with model_lock:
             model_training = False
@@ -109,7 +110,7 @@ async def handle_rating_request(request: RateMovieRequest):
         if not model_training:
             model_training = True
             try:
-                joblib.dump(train_model(), model_path)
+                train_model()
                 print("Rating added and model retrained")
             finally:
                 model_training = False
@@ -148,7 +149,7 @@ async def retrain():
             raise HTTPException(status_code=409, detail="Model is already being trained")
         model_training = True
     try:
-        joblib.dump(train_model(), model_path)
+        train_model()
     finally:
         with model_lock:
             model_training = False
@@ -161,10 +162,18 @@ def train_model():
     ratings = pd.read_csv('ratings.csv')
     reader = Reader()
     data = Dataset.load_from_df(ratings[['userId', 'movieId', 'rating']], reader)
-    model = SlopeOne()
+
+    # {'n_epochs': 35, 'lr_all': 0.003, 'reg_all': 0.1}
+    model = SVD(n_epochs=35, lr_all=0.003, reg_all=0.1)
+
+    start_time = time.time()
     model.fit(data.build_full_trainset())
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Model trained in {elapsed_time:.2f} seconds")
+
     joblib.dump(model, model_path)
-    return model
+    print("Model saved to ", model_path)
 
 
 
